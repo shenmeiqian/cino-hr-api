@@ -12,6 +12,7 @@ from app.models.performance import PerformanceBatch, ScorecardMapping, HrManager
 from app.models.evidence import Evidence
 from app.models.ticket import Ticket
 from app.models.emergency import EmergencyApproval
+from app.models.workflow import WorkflowDefinition, WorkflowInstance
 
 __all__ = [
     "Department",
@@ -31,4 +32,6 @@ __all__ = [
     "Evidence",
     "Ticket",
     "EmergencyApproval",
+    "WorkflowDefinition",
+    "WorkflowInstance",
 ]

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_api_key
 from app.database import get_db
 from app.models.evidence import Evidence
-from app.schemas.evidence import EvidenceCreate, EvidenceOut
+from app.schemas.evidence import EvidenceCreate, EvidenceOut, EvidenceUpdate
 
 router = APIRouter(
     prefix="/api/v1/evidences", tags=["T14-evidences"], dependencies=[Depends(require_api_key)]
@@ -33,6 +33,18 @@ def get_evidence(item_id: int, db: Session = Depends(get_db)):
     row = db.get(Evidence, item_id)
     if not row:
         raise HTTPException(404, detail="证据不存在")
+    return row
+
+
+@router.patch("/{item_id}", response_model=EvidenceOut)
+def update_evidence(item_id: int, body: EvidenceUpdate, db: Session = Depends(get_db)):
+    row = db.get(Evidence, item_id)
+    if not row:
+        raise HTTPException(404, detail="证据不存在")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
     return row
 
 

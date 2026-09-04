@@ -7,6 +7,8 @@ from app.models.headcount import HeadcountPlan
 from app.models.position import Position, PositionClause
 from app.models.training import Training
 from app.services.kpi_service import ensure_default_mappings
+from app.models.workflow import WorkflowDefinition
+import json
 
 
 def seed() -> None:
@@ -16,6 +18,7 @@ def seed() -> None:
         if db.query(Department).filter(Department.code == "HR").first():
             print("Seed data already exists, skip.")
             ensure_default_mappings(db)
+            seed_workflow(db)
             return
 
         hr = Department(code="HR", name="人事行政部")
@@ -179,9 +182,54 @@ def seed() -> None:
         print(f"  positions: TEMP({temp_pos.id}), MEDIA({media_pos.id}), HR-MGR({hr_mgr.id})")
         print(f"  employees: E1001(no train id={emp_media.id}), E1002(trained id={emp_trained.id})")
         print(f"  system_account_id examples: sys3-media-1001 / sys3-media-1002 / sys3-hr-2001")
+        seed_workflow(db)
     finally:
         db.close()
 
 
+
+def seed_workflow(db) -> None:
+    if db.query(WorkflowDefinition).filter(WorkflowDefinition.code == "ONBOARD-APPROVAL").first():
+        return
+    nodes = [
+        {"id": "n-start", "type": "start", "label": "开始", "x": 80, "y": 160},
+        {
+            "id": "n-hr",
+            "type": "approval",
+            "label": "人事初审",
+            "x": 280,
+            "y": 160,
+            "approverRole": "hr",
+        },
+        {
+            "id": "n-mgr",
+            "type": "approval",
+            "label": "部门主管",
+            "x": 480,
+            "y": 160,
+            "approverRole": "dept_manager",
+        },
+        {"id": "n-end", "type": "end", "label": "结束", "x": 680, "y": 160},
+    ]
+    edges = [
+        {"id": "e1", "source": "n-start", "target": "n-hr"},
+        {"id": "e2", "source": "n-hr", "target": "n-mgr"},
+        {"id": "e3", "source": "n-mgr", "target": "n-end"},
+    ]
+    db.add(
+        WorkflowDefinition(
+            code="ONBOARD-APPROVAL",
+            name="入职审批",
+            description="入职审批流：开始 → 人事初审 → 部门主管 → 结束",
+            status="published",
+            nodes_json=json.dumps(nodes, ensure_ascii=False),
+            edges_json=json.dumps(edges, ensure_ascii=False),
+        )
+    )
+    db.commit()
+    print("Seed workflow: 入职审批 (ONBOARD-APPROVAL)")
+
+
 if __name__ == "__main__":
     seed()
+

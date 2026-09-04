@@ -16,6 +16,14 @@ class EvidenceCreate(BaseModel):
     uploaded_by: Optional[str] = None
 
 
+class EvidenceUpdate(BaseModel):
+    title: Optional[str] = None
+    file_url: Optional[str] = None
+    content: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    employee_id: Optional[int] = None
+
+
 class EvidenceOut(ORMModel):
     id: int
     ref_type: str

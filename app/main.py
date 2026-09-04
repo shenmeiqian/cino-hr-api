@@ -19,6 +19,7 @@ from app.routers import (
     recruiting,
     tickets,
     trainings,
+    workflows,
 )
 
 
@@ -60,6 +61,7 @@ app.include_router(attendance.router)
 app.include_router(kpi.router)
 app.include_router(evidences.router)
 app.include_router(tickets.router)
+app.include_router(workflows.router)
 
 
 @app.get("/health", tags=["system"])
