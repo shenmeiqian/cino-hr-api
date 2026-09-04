@@ -1,0 +1,11 @@
+# Optional: docker compose up --build
+services:
+  cino-hr-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      API_KEY: demo-key
+      DATABASE_URL: sqlite:///./cino_hr.db
+    volumes:
+      - ./:/app
