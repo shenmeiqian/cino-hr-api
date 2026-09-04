@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import AuthContext, require_perm, require_user_or_api_key
@@ -26,7 +27,11 @@ def _out(db: Session, row: Position) -> PositionOut:
 
 def _set_roles(db: Session, position_id: int, role_ids: list[int]) -> None:
     db.query(PositionRole).filter(PositionRole.position_id == position_id).delete()
+    seen = set()
     for rid in role_ids:
+        if rid in seen:
+            continue
+        seen.add(rid)
         if not db.get(SysRole, rid):
             raise HTTPException(400, detail=f"角色不存在: {rid}")
         db.add(PositionRole(position_id=position_id, role_id=rid))
@@ -56,7 +61,7 @@ def create_position(
 
 
 @router.get("/positions", response_model=list[PositionOut])
-def list_positions(db: Session = Depends(get_db), _auth: AuthContext = Depends(require_user_or_api_key)):  # used by user form too
+def list_positions(db: Session = Depends(get_db), _auth: AuthContext = Depends(require_user_or_api_key)):
     return [_out(db, r) for r in db.query(Position).order_by(Position.id).all()]
 
 
@@ -84,6 +89,40 @@ def update_position(
         setattr(row, k, v)
     if role_ids is not None:
         _set_roles(db, row.id, role_ids)
+    db.commit()
+    db.refresh(row)
+    return _out(db, row)
+
+
+class PositionRolesIn(BaseModel):
+    role_ids: list[int] = Field(default_factory=list)
+
+
+@router.get("/positions/{item_id}/roles")
+def get_position_roles(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_user_or_api_key),
+):
+    row = db.get(Position, item_id)
+    if not row:
+        raise HTTPException(404, detail="岗位不存在")
+    out = _out(db, row)
+    return {"position_id": row.id, "code": row.code, "role_ids": out.role_ids, "role_codes": out.role_codes}
+
+
+@router.put("/positions/{item_id}/roles", response_model=PositionOut)
+def set_position_roles(
+    item_id: int,
+    body: PositionRolesIn,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("api.org.write")),
+):
+    """Assign SysRoles to a position (requires org write)."""
+    row = db.get(Position, item_id)
+    if not row:
+        raise HTTPException(404, detail="岗位不存在")
+    _set_roles(db, row.id, body.role_ids)
     db.commit()
     db.refresh(row)
     return _out(db, row)

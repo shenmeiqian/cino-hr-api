@@ -36,6 +36,22 @@ def parse_json(raw: str | None) -> list:
         return []
 
 
+
+def validate_approver_roles(db: Session, nodes: list) -> None:
+    """Approval nodes must use a real local Position.code as approverRole (no free text)."""
+    codes = {c for (c,) in db.query(Position.code).all()}
+    bad = []
+    for n in nodes or []:
+        if n.get("type") != "approval":
+            continue
+        role = (n.get("approverRole") or "").strip()
+        if not role:
+            bad.append(f"{n.get('id')}: 审批节点缺少 approverRole（须选本地岗位 code）")
+        elif role not in codes:
+            bad.append(f"{n.get('id')}: approverRole={role} 不是有效岗位编码")
+    if bad:
+        raise HTTPException(400, detail="审批岗位校验失败: " + "; ".join(bad))
+
 def find_start_current(defn: WorkflowDefinition) -> Optional[str]:
     nodes = parse_json(defn.nodes_json)
     edges = parse_json(defn.edges_json)
@@ -274,14 +290,23 @@ def current_node_meta(defn: WorkflowDefinition | None, node_id: str | None) -> d
     }
 
 
-def list_todos_for_user(db: Session, user_employee_id: int | None, is_api_key: bool = False) -> list[dict]:
+def list_todos_for_user(
+    db: Session,
+    user_employee_id: int | None,
+    is_api_key: bool = False,
+    user_position_id: int | None = None,
+) -> list[dict]:
     q = db.query(WorkflowInstance).filter(WorkflowInstance.status == "running")
     rows = q.order_by(WorkflowInstance.id.desc()).all()
     pos_code = None
-    if user_employee_id and not is_api_key:
-        emp = db.get(Employee, user_employee_id)
-        if emp and emp.position_id:
-            pos = db.get(Position, emp.position_id)
+    if not is_api_key:
+        pid = user_position_id
+        if not pid and user_employee_id:
+            emp = db.get(Employee, user_employee_id)
+            if emp:
+                pid = emp.position_id
+        if pid:
+            pos = db.get(Position, pid)
             pos_code = pos.code if pos else None
 
     out = []

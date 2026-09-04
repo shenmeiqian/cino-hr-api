@@ -58,9 +58,10 @@ def revoke_user_tokens(db: Session, user_id: int) -> int:
     return n
 
 
-def get_user_permissions(user: SysUser) -> list[SysPermission]:
+def get_user_permissions(user: SysUser, roles: list[SysRole] | None = None) -> list[SysPermission]:
+    """Collect permissions from roles (default: user.roles). Pass effective roles for merge."""
     seen: dict[int, SysPermission] = {}
-    for role in user.roles or []:
+    for role in (roles if roles is not None else (user.roles or [])):
         if role.status != "active":
             continue
         for p in role.permissions or []:
@@ -77,6 +78,13 @@ def load_user_with_rbac(db: Session, user_id: int) -> Optional[SysUser]:
         .filter(SysUser.id == user_id)
         .first()
     )
+
+
+def effective_roles_and_perms(db: Session, user: SysUser) -> tuple[list[SysRole], list[SysPermission]]:
+    from app.services.effective_rbac import effective_roles
+
+    roles = effective_roles(db, user)
+    return roles, get_user_permissions(user, roles)
 
 
 def user_login_blocked_message(status_value: str) -> str | None:
@@ -156,7 +164,9 @@ async def require_user_or_api_key(
         db.delete(row)
         db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=blocked)
-    perms = get_user_permissions(user)
+    _roles, perms = effective_roles_and_perms(db, user)
+    # stash effective roles on user for /me consumers (non-persistent attribute)
+    user._effective_roles = _roles  # type: ignore[attr-defined]
     return AuthContext(is_api_key=False, user=user, token=token, permissions=perms)
 
 

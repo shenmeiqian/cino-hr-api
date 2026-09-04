@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     app_title: str = "CINO HR API"
     app_version: str = "0.2.0"
 
+    # Phase2: merge PositionRole into effective roles on login/me (default true for demo)
+    sync_roles_from_position: bool = True
+
     # File storage: local | s3 | database
     file_storage_backend: str = "local"
     file_local_dir: str = "/workspace/cino-hr-api/data/files"

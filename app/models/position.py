@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -49,6 +49,7 @@ class PositionClause(Base):
 class PositionRole(Base):
     """岗位绑定系统角色：任职该岗位的用户可自动同步获得角色。"""
     __tablename__ = "position_roles"
+    __table_args__ = (UniqueConstraint("position_id", "role_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False, index=True)

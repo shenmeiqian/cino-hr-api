@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth import AuthContext, hash_password, require_perm, require_user_or_api_key, revoke_user_tokens
 from app.database import get_db
+from app.models.employee import Employee
 from app.models.position import Position
+from app.services.effective_rbac import bind_user_employee
 from app.models.sys_menu import SysMenu
 from app.models.sys_rbac import (
     SysPermission,
@@ -48,11 +50,18 @@ def _position_meta(db: Session, position_id: int | None) -> tuple[str | None, st
 def _user_out(db: Session, u: SysUser) -> SysUserOut:
     roles = u.roles or []
     code, title = _position_meta(db, u.position_id)
+    emp_name = emp_no = None
+    if u.employee_id:
+        emp = db.get(Employee, u.employee_id)
+        if emp:
+            emp_name, emp_no = emp.name, emp.emp_no
     return SysUserOut(
         id=u.id,
         username=u.username,
         display_name=u.display_name,
         employee_id=u.employee_id,
+        employee_name=emp_name,
+        employee_no=emp_no,
         position_id=u.position_id,
         position_code=code,
         position_title=title,
@@ -209,6 +218,8 @@ def create_user(
     )
     db.add(u)
     db.flush()
+    if body.employee_id is not None:
+        bind_user_employee(db, u, body.employee_id)
     for rid in body.role_ids:
         db.add(SysUserRole(user_id=u.id, role_id=rid))
     db.commit()
@@ -233,7 +244,7 @@ def update_user(
         revoke_user_tokens(db, u.id)
     data = body.model_dump(exclude_unset=True)
     if "employee_id" in data:
-        u.employee_id = data["employee_id"]
+        bind_user_employee(db, u, data["employee_id"])
     if "position_id" in data:
         pid = data["position_id"]
         if pid is not None and not db.get(Position, pid):

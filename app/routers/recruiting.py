@@ -100,8 +100,11 @@ def advance_pipeline(
     item_id: int,
     body: PipelineAdvanceIn,
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_perm("btn.recruiting.submit")),
+    auth: AuthContext = Depends(require_user_or_api_key),
 ):
+    need = "btn.recruiting.submit" if body.action == "submit_approval" else "btn.recruiting.create"
+    if not auth.has_perm(need):
+        raise HTTPException(403, detail=f"无权限执行此操作（缺少权限码 {need}）")
     row = db.get(RecruitingReq, item_id)
     if not row:
         raise HTTPException(404, detail="入职闭环单不存在")

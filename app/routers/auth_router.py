@@ -32,12 +32,14 @@ _OIDC_STATES: dict[str, str] = {}
 
 
 def _login_payload(db: Session, user: SysUser, token: str) -> LoginOut:
+    from app.auth import effective_roles_and_perms
+
     user = load_user_with_rbac(db, user.id) or user
-    perms = get_user_permissions(user)
+    roles, perms = effective_roles_and_perms(db, user)
     return LoginOut(
         token=token,
         user=UserBrief.model_validate(user),
-        roles=[r.code for r in (user.roles or []) if r.status == "active"],
+        roles=[r.code for r in roles],
         permissions=[p.code for p in perms],
     )
 
@@ -60,7 +62,10 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=MeOut)
-def me(auth: AuthContext = Depends(require_user_or_api_key)):
+def me(auth: AuthContext = Depends(require_user_or_api_key), db: Session = Depends(get_db)):
+    from app.config import get_settings
+    from app.services.effective_rbac import effective_roles, position_roles, resolve_position_id, is_sync_roles_from_position
+
     if auth.is_api_key:
         return MeOut(
             user=UserBrief(
@@ -69,13 +74,23 @@ def me(auth: AuthContext = Depends(require_user_or_api_key)):
             roles=["admin"],
             permissions=["*"],
             is_api_key=True,
+            sync_roles_from_position=is_sync_roles_from_position(),
+            direct_roles=["admin"],
+            position_roles=[],
         )
     assert auth.user
+    user = auth.user
+    direct = [r.code for r in (user.roles or []) if r.status == "active"]
+    pos_codes = [r.code for r in position_roles(db, resolve_position_id(db, user))]
+    eff = [r.code for r in effective_roles(db, user)]
     return MeOut(
-        user=UserBrief.model_validate(auth.user),
-        roles=[r.code for r in (auth.user.roles or []) if r.status == "active"],
+        user=UserBrief.model_validate(user),
+        roles=eff,
         permissions=sorted(auth.permission_codes),
         is_api_key=False,
+        sync_roles_from_position=is_sync_roles_from_position(),
+        direct_roles=direct,
+        position_roles=pos_codes,
     )
 
 

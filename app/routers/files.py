@@ -50,11 +50,14 @@ async def upload_file(
     file: UploadFile = File(...),
     ref_type: str | None = Form(default=None),
     ref_id: int | None = Form(default=None),
+    backend: str | None = Form(default=None, description="Override: local|s3|database"),
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_perm("btn.files.upload")),
 ):
     uploader = "api-key" if auth.is_api_key else (auth.user.username if auth.user else None)
-    return await save_upload(db, file, uploaded_by=uploader, ref_type=ref_type, ref_id=ref_id)
+    return await save_upload(
+        db, file, uploaded_by=uploader, ref_type=ref_type, ref_id=ref_id, backend=backend
+    )
 
 
 @router.get("/{file_id}/download")

@@ -71,6 +71,8 @@ def create_definition(
         raise HTTPException(400, detail=f"流程编码已存在: {body.code}")
     nodes = body.nodes or []
     edges = body.edges or []
+    if nodes:
+        wfs.validate_approver_roles(db, nodes)
     row = WorkflowDefinition(
         code=body.code,
         name=body.name,
@@ -110,6 +112,7 @@ def update_definition(
     if body.status is not None:
         row.status = body.status
     if body.nodes is not None:
+        wfs.validate_approver_roles(db, body.nodes)
         row.nodes_json = json.dumps(body.nodes, ensure_ascii=False)
     if body.edges is not None:
         row.edges_json = json.dumps(body.edges, ensure_ascii=False)
@@ -131,6 +134,7 @@ def publish_definition(
     nodes = wfs.parse_json(row.nodes_json)
     if not nodes:
         raise HTTPException(400, detail="请先设计节点后再发布")
+    wfs.validate_approver_roles(db, nodes)
     row.status = "published"
     row.updated_at = datetime.utcnow()
     db.commit()
@@ -202,9 +206,10 @@ def submit_document(
 @router.get("/todos", response_model=list[WorkflowTodoOut])
 def my_todos(db: Session = Depends(get_db), auth: AuthContext = Depends(require_user_or_api_key)):
     emp_id = None if auth.is_api_key else (auth.user.employee_id if auth.user else None)
+    pos_id = None if auth.is_api_key else (auth.user.position_id if auth.user else None)
     # admin / api-key sees all running; others filtered by position code
     is_admin = auth.is_api_key or ("admin" in [r.code for r in (auth.user.roles or [])])
-    items = wfs.list_todos_for_user(db, emp_id, is_api_key=is_admin)
+    items = wfs.list_todos_for_user(db, emp_id, is_api_key=is_admin, user_position_id=pos_id)
     return items
 
 

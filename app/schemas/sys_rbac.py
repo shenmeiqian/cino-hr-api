@@ -35,6 +35,10 @@ class MeOut(BaseModel):
     roles: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
     is_api_key: bool = False
+    # Phase2: effective = direct ∪ position (when sync_roles_from_position)
+    sync_roles_from_position: bool = True
+    direct_roles: list[str] = Field(default_factory=list)
+    position_roles: list[str] = Field(default_factory=list)
 
 
 class SysUserCreate(BaseModel):
@@ -65,6 +69,8 @@ class SysUserOut(ORMModel):
     username: str
     display_name: str
     employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
+    employee_no: Optional[str] = None
     position_id: Optional[int] = None
     position_code: Optional[str] = None
     position_title: Optional[str] = None

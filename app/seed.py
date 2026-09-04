@@ -5,7 +5,9 @@ import json
 from app.database import SessionLocal, init_db
 from app.models.employee import Department, Employee
 from app.models.headcount import HeadcountPlan
-from app.models.position import Position, PositionClause
+from app.models.position import Position, PositionClause, PositionRole
+from app.models.notification import AppSetting
+from app.models.sys_rbac import SysRole, SysUser
 from app.models.training import Training
 from app.models.workflow import WorkflowDefinition
 from app.services.kpi_service import ensure_default_mappings
@@ -112,6 +114,35 @@ def seed_workflows(db) -> None:
     db.commit()
 
 
+
+def seed_position_roles(db) -> None:
+    """Demo: HR-MANAGER → hr role; MEDIA-CONTACT → viewer role (position→role sync)."""
+    mapping = {"HR-MANAGER": "hr", "MEDIA-CONTACT": "viewer", "TEMP-UNIVERSAL": "viewer"}
+    for pos_code, role_code in mapping.items():
+        pos = db.query(Position).filter(Position.code == pos_code).first()
+        role = db.query(SysRole).filter(SysRole.code == role_code).first()
+        if not pos or not role:
+            continue
+        exists = (
+            db.query(PositionRole)
+            .filter(PositionRole.position_id == pos.id, PositionRole.role_id == role.id)
+            .first()
+        )
+        if not exists:
+            db.add(PositionRole(position_id=pos.id, role_id=role.id))
+            print(f"Seed PositionRole: {pos_code} → {role_code}")
+    # sync_roles_from_position setting
+    row = db.query(AppSetting).filter(AppSetting.key == "sync_roles_from_position").first()
+    if not row:
+        db.add(AppSetting(key="sync_roles_from_position", value="true"))
+    # bidirectional employee ↔ user
+    for u in db.query(SysUser).filter(SysUser.employee_id.isnot(None)).all():
+        emp = db.query(Employee).filter(Employee.id == u.employee_id).first()
+        if emp and emp.sys_user_id != u.id:
+            emp.sys_user_id = u.id
+    db.commit()
+
+
 def seed() -> None:
     init_db()
     db = SessionLocal()
@@ -121,6 +152,7 @@ def seed() -> None:
             ensure_default_mappings(db)
             seed_workflows(db)
             seed_rbac(db)
+            seed_position_roles(db)
             return
 
         hr = Department(code="HR", name="人事行政部")
@@ -281,6 +313,7 @@ def seed() -> None:
         print(f"  employees: E1001(no train id={emp_media.id}), E1002(trained id={emp_trained.id})")
         seed_workflows(db)
         seed_rbac(db)
+        seed_position_roles(db)
     finally:
         db.close()
 
