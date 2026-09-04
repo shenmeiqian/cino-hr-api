@@ -25,9 +25,8 @@ class EmployeeCreate(BaseModel):
     name: str
     dept_id: Optional[int] = None
     position_id: Optional[int] = None
-    system_account_id: Optional[str] = Field(
-        None, description="综合系统3.0账号ID绑定"
-    )
+    system_account_id: Optional[str] = Field(None, description="综合系统3.0账号ID绑定")
+    sys_user_id: Optional[int] = Field(None, description="关联本地 SysUser")
     status: str = "active"
     hire_date: Optional[date] = None
     leave_date: Optional[date] = None
@@ -43,6 +42,7 @@ class EmployeeUpdate(BaseModel):
     dept_id: Optional[int] = None
     position_id: Optional[int] = None
     system_account_id: Optional[str] = None
+    sys_user_id: Optional[int] = None
     status: Optional[str] = None
     hire_date: Optional[date] = None
     leave_date: Optional[date] = None
@@ -60,6 +60,8 @@ class EmployeeOut(ORMModel):
     dept_id: Optional[int] = None
     position_id: Optional[int] = None
     system_account_id: Optional[str] = None
+    sys_user_id: Optional[int] = None
+    sys_username: Optional[str] = None
     status: str
     hire_date: Optional[date] = None
     leave_date: Optional[date] = None

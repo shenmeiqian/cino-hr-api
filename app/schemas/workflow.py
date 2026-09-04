@@ -55,3 +55,23 @@ class WorkflowInstanceOut(ORMModel):
     status: str
     current_node_id: Optional[str] = None
     created_at: Optional[datetime] = None
+
+
+class WorkflowHistoryOut(ORMModel):
+    id: int
+    instance_id: int
+    node_id: Optional[str] = None
+    node_label: Optional[str] = None
+    action: str
+    actor: Optional[str] = None
+    comment: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class WorkflowInstanceDetailOut(WorkflowInstanceOut):
+    definition_code: Optional[str] = None
+    definition_name: Optional[str] = None
+    current_node_label: Optional[str] = None
+    approver_role: Optional[str] = None
+    history: list[WorkflowHistoryOut] = Field(default_factory=list)
+    business: Optional[dict[str, Any]] = None

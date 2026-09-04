@@ -1,18 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import require_api_key
+from app.auth import AuthContext, require_perm, require_user_or_api_key
 from app.database import get_db
 from app.models.onboarding import Onboarding
 from app.schemas.onboarding import OnboardingCreate, OnboardingOut, OnboardingUpdate
 
 router = APIRouter(
-    prefix="/api/v1/onboarding", tags=["T05-onboarding"], dependencies=[Depends(require_api_key)]
+    prefix="/api/v1/onboarding", tags=["T05-onboarding"], dependencies=[Depends(require_user_or_api_key)]
 )
 
 
 @router.post("", response_model=OnboardingOut)
-def create_onboarding(body: OnboardingCreate, db: Session = Depends(get_db)):
+def create_onboarding(
+    body: OnboardingCreate,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("btn.onboarding.create")),
+):
     row = Onboarding(**body.model_dump())
     db.add(row)
     db.commit()
@@ -21,12 +25,19 @@ def create_onboarding(body: OnboardingCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[OnboardingOut])
-def list_onboarding(db: Session = Depends(get_db)):
+def list_onboarding(
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("menu.onboarding")),
+):
     return db.query(Onboarding).all()
 
 
 @router.get("/{item_id}", response_model=OnboardingOut)
-def get_onboarding(item_id: int, db: Session = Depends(get_db)):
+def get_onboarding(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("menu.onboarding")),
+):
     row = db.get(Onboarding, item_id)
     if not row:
         raise HTTPException(404, detail="入职记录不存在")
@@ -34,7 +45,12 @@ def get_onboarding(item_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{item_id}", response_model=OnboardingOut)
-def update_onboarding(item_id: int, body: OnboardingUpdate, db: Session = Depends(get_db)):
+def update_onboarding(
+    item_id: int,
+    body: OnboardingUpdate,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("api.onboarding.write")),
+):
     row = db.get(Onboarding, item_id)
     if not row:
         raise HTTPException(404, detail="入职记录不存在")
@@ -46,7 +62,11 @@ def update_onboarding(item_id: int, body: OnboardingUpdate, db: Session = Depend
 
 
 @router.delete("/{item_id}")
-def delete_onboarding(item_id: int, db: Session = Depends(get_db)):
+def delete_onboarding(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("api.onboarding.write")),
+):
     row = db.get(Onboarding, item_id)
     if not row:
         raise HTTPException(404, detail="入职记录不存在")

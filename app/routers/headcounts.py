@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import require_api_key
+from app.auth import require_user_or_api_key
 from app.database import get_db
 from app.models.headcount import HeadcountPlan
 from app.schemas.headcount import HeadcountCreate, HeadcountOut, HeadcountUpdate
 
 router = APIRouter(
-    prefix="/api/v1/headcounts", tags=["T02-headcounts"], dependencies=[Depends(require_api_key)]
+    prefix="/api/v1/headcounts", tags=["T02-headcounts"], dependencies=[Depends(require_user_or_api_key)]
 )
 
 

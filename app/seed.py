@@ -1,14 +1,115 @@
 """Seed demo data for CINO HR MVP."""
 from datetime import date, timedelta
+import json
 
 from app.database import SessionLocal, init_db
 from app.models.employee import Department, Employee
 from app.models.headcount import HeadcountPlan
 from app.models.position import Position, PositionClause
 from app.models.training import Training
-from app.services.kpi_service import ensure_default_mappings
 from app.models.workflow import WorkflowDefinition
-import json
+from app.services.kpi_service import ensure_default_mappings
+from app.services.rbac_seed import seed_rbac
+
+
+def _approval_flow(code: str, name: str, description: str, role1: str, role2: str) -> dict:
+    nodes = [
+        {"id": "n-start", "type": "start", "label": "开始", "x": 80, "y": 160},
+        {
+            "id": "n-hr",
+            "type": "approval",
+            "label": "人事初审",
+            "x": 280,
+            "y": 160,
+            "approverRole": role1,
+        },
+        {
+            "id": "n-mgr",
+            "type": "approval",
+            "label": "岗位复核",
+            "x": 480,
+            "y": 160,
+            "approverRole": role2,
+        },
+        {"id": "n-end", "type": "end", "label": "结束", "x": 680, "y": 160},
+    ]
+    edges = [
+        {"id": "e1", "source": "n-start", "target": "n-hr"},
+        {"id": "e2", "source": "n-hr", "target": "n-mgr"},
+        {"id": "e3", "source": "n-mgr", "target": "n-end"},
+    ]
+    return {
+        "code": code,
+        "name": name,
+        "description": description,
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+
+def seed_workflows(db) -> None:
+    """Ensure published approval flows bound to local position codes."""
+    defs = [
+        _approval_flow(
+            "ONBOARD-APPROVAL",
+            "入职审批",
+            "入职审批流：开始 → 人事主管 → 媒体联络人 → 结束",
+            "HR-MANAGER",
+            "MEDIA-CONTACT",
+        ),
+        _approval_flow(
+            "RECRUIT-APPROVAL",
+            "招聘需求审批",
+            "招聘审批：人事主管 → 媒体联络人",
+            "HR-MANAGER",
+            "MEDIA-CONTACT",
+        ),
+        _approval_flow(
+            "CONTRACT-APPROVAL",
+            "合同审批",
+            "合同审批：人事主管 → 媒体联络人",
+            "HR-MANAGER",
+            "MEDIA-CONTACT",
+        ),
+        _approval_flow(
+            "EMERGENCY-APPROVAL",
+            "紧急用工审批",
+            "紧急用工：人事主管 → 媒体联络人",
+            "HR-MANAGER",
+            "MEDIA-CONTACT",
+        ),
+        _approval_flow(
+            "TICKET-APPROVAL",
+            "工单审批",
+            "人事工单：人事主管 → 媒体联络人",
+            "HR-MANAGER",
+            "MEDIA-CONTACT",
+        ),
+    ]
+    for d in defs:
+        row = db.query(WorkflowDefinition).filter(WorkflowDefinition.code == d["code"]).first()
+        payload_nodes = json.dumps(d["nodes"], ensure_ascii=False)
+        payload_edges = json.dumps(d["edges"], ensure_ascii=False)
+        if not row:
+            db.add(
+                WorkflowDefinition(
+                    code=d["code"],
+                    name=d["name"],
+                    description=d["description"],
+                    status="published",
+                    nodes_json=payload_nodes,
+                    edges_json=payload_edges,
+                )
+            )
+            print(f"Seed workflow: {d['name']} ({d['code']})")
+        else:
+            # refresh position-bound roles
+            row.name = d["name"]
+            row.description = d["description"]
+            row.status = "published"
+            row.nodes_json = payload_nodes
+            row.edges_json = payload_edges
+    db.commit()
 
 
 def seed() -> None:
@@ -16,9 +117,10 @@ def seed() -> None:
     db = SessionLocal()
     try:
         if db.query(Department).filter(Department.code == "HR").first():
-            print("Seed data already exists, skip.")
+            print("Seed data already exists, skip core.")
             ensure_default_mappings(db)
-            seed_workflow(db)
+            seed_workflows(db)
+            seed_rbac(db)
             return
 
         hr = Department(code="HR", name="人事行政部")
@@ -26,7 +128,6 @@ def seed() -> None:
         db.add_all([hr, ops])
         db.flush()
 
-        # 通用临时岗 JD
         temp_pos = Position(
             code="TEMP-UNIVERSAL",
             title="通用临时岗",
@@ -130,8 +231,6 @@ def seed() -> None:
         db.add_all([emp_media, emp_trained, emp_hr, emp_temp])
         db.flush()
 
-        # E1001 无完整培训（用于 grant 失败演示）
-        # E1002 三项均 passed 且有效
         today = date.today()
         valid = today + timedelta(days=180)
         for code, name in [
@@ -151,7 +250,6 @@ def seed() -> None:
                 )
             )
 
-        # 编制计划
         db.add(
             HeadcountPlan(
                 year_month=today.strftime("%Y-%m"),
@@ -181,55 +279,11 @@ def seed() -> None:
         print(f"  departments: HR({hr.id}), OPS({ops.id})")
         print(f"  positions: TEMP({temp_pos.id}), MEDIA({media_pos.id}), HR-MGR({hr_mgr.id})")
         print(f"  employees: E1001(no train id={emp_media.id}), E1002(trained id={emp_trained.id})")
-        print(f"  system_account_id examples: sys3-media-1001 / sys3-media-1002 / sys3-hr-2001")
-        seed_workflow(db)
+        seed_workflows(db)
+        seed_rbac(db)
     finally:
         db.close()
 
 
-
-def seed_workflow(db) -> None:
-    if db.query(WorkflowDefinition).filter(WorkflowDefinition.code == "ONBOARD-APPROVAL").first():
-        return
-    nodes = [
-        {"id": "n-start", "type": "start", "label": "开始", "x": 80, "y": 160},
-        {
-            "id": "n-hr",
-            "type": "approval",
-            "label": "人事初审",
-            "x": 280,
-            "y": 160,
-            "approverRole": "hr",
-        },
-        {
-            "id": "n-mgr",
-            "type": "approval",
-            "label": "部门主管",
-            "x": 480,
-            "y": 160,
-            "approverRole": "dept_manager",
-        },
-        {"id": "n-end", "type": "end", "label": "结束", "x": 680, "y": 160},
-    ]
-    edges = [
-        {"id": "e1", "source": "n-start", "target": "n-hr"},
-        {"id": "e2", "source": "n-hr", "target": "n-mgr"},
-        {"id": "e3", "source": "n-mgr", "target": "n-end"},
-    ]
-    db.add(
-        WorkflowDefinition(
-            code="ONBOARD-APPROVAL",
-            name="入职审批",
-            description="入职审批流：开始 → 人事初审 → 部门主管 → 结束",
-            status="published",
-            nodes_json=json.dumps(nodes, ensure_ascii=False),
-            edges_json=json.dumps(edges, ensure_ascii=False),
-        )
-    )
-    db.commit()
-    print("Seed workflow: 入职审批 (ONBOARD-APPROVAL)")
-
-
 if __name__ == "__main__":
     seed()
-

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import require_api_key
+from app.auth import AuthContext, require_perm, require_user_or_api_key
 from app.database import get_db
 from app.models.performance import HrManagerScore, PerformanceBatch, ScorecardMapping
 from app.schemas.performance import (
@@ -14,11 +14,11 @@ from app.schemas.performance import (
 )
 from app.services.kpi_service import ensure_default_mappings, run_kpi_batch
 
-router = APIRouter(prefix="/api/v1", tags=["T10-T11-T15-kpi"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/api/v1", tags=["T10-T11-T15-kpi"], dependencies=[Depends(require_user_or_api_key)])
 
 
 @router.post("/performance-batches", response_model=PerformanceBatchOut)
-def create_batch(body: PerformanceBatchCreate, db: Session = Depends(get_db)):
+def create_batch(body: PerformanceBatchCreate, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("btn.kpi.run"))):
     if db.query(PerformanceBatch).filter(PerformanceBatch.year_month == body.year_month).first():
         raise HTTPException(400, detail="该月份批次已存在")
     row = PerformanceBatch(year_month=body.year_month, remark=body.remark, status="open")
@@ -34,7 +34,7 @@ def list_batches(db: Session = Depends(get_db)):
 
 
 @router.post("/scorecard-mappings", response_model=ScorecardMappingOut)
-def create_mapping(body: ScorecardMappingCreate, db: Session = Depends(get_db)):
+def create_mapping(body: ScorecardMappingCreate, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("btn.kpi.run"))):
     row = ScorecardMapping(**body.model_dump())
     db.add(row)
     db.commit()
@@ -49,7 +49,7 @@ def list_mappings(db: Session = Depends(get_db)):
 
 
 @router.post("/kpi/batch/{yyyy_mm}/run", response_model=KpiRunResult)
-def run_batch(yyyy_mm: str, db: Session = Depends(get_db)):
+def run_batch(yyyy_mm: str, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("btn.kpi.run"))):
     """计算人事主管 KPI 占位得分写入 T15。"""
     batch, scores, total = run_kpi_batch(db, yyyy_mm)
     return KpiRunResult(

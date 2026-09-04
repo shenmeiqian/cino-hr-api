@@ -1,18 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import require_api_key
+from app.auth import AuthContext, require_perm, require_user_or_api_key
 from app.database import get_db
 from app.models.contract import Contract
 from app.schemas.contract import ContractCreate, ContractOut, ContractUpdate
 
 router = APIRouter(
-    prefix="/api/v1/contracts", tags=["T06-contracts"], dependencies=[Depends(require_api_key)]
+    prefix="/api/v1/contracts", tags=["T06-contracts"], dependencies=[Depends(require_user_or_api_key)]
 )
 
 
 @router.post("", response_model=ContractOut)
-def create_contract(body: ContractCreate, db: Session = Depends(get_db)):
+def create_contract(
+    body: ContractCreate,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("btn.contracts.create")),
+):
     row = Contract(**body.model_dump())
     db.add(row)
     db.commit()
@@ -21,7 +25,11 @@ def create_contract(body: ContractCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[ContractOut])
-def list_contracts(employee_id: int | None = None, db: Session = Depends(get_db)):
+def list_contracts(
+    employee_id: int | None = None,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("menu.contracts")),
+):
     q = db.query(Contract)
     if employee_id:
         q = q.filter(Contract.employee_id == employee_id)
@@ -29,7 +37,11 @@ def list_contracts(employee_id: int | None = None, db: Session = Depends(get_db)
 
 
 @router.get("/{item_id}", response_model=ContractOut)
-def get_contract(item_id: int, db: Session = Depends(get_db)):
+def get_contract(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("menu.contracts")),
+):
     row = db.get(Contract, item_id)
     if not row:
         raise HTTPException(404, detail="合同不存在")
@@ -37,7 +49,12 @@ def get_contract(item_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{item_id}", response_model=ContractOut)
-def update_contract(item_id: int, body: ContractUpdate, db: Session = Depends(get_db)):
+def update_contract(
+    item_id: int,
+    body: ContractUpdate,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("api.contracts.write")),
+):
     row = db.get(Contract, item_id)
     if not row:
         raise HTTPException(404, detail="合同不存在")
@@ -49,7 +66,11 @@ def update_contract(item_id: int, body: ContractUpdate, db: Session = Depends(ge
 
 
 @router.delete("/{item_id}")
-def delete_contract(item_id: int, db: Session = Depends(get_db)):
+def delete_contract(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("api.contracts.write")),
+):
     row = db.get(Contract, item_id)
     if not row:
         raise HTTPException(404, detail="合同不存在")

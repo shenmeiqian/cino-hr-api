@@ -44,3 +44,12 @@ class PositionClause(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     position: Mapped["Position"] = relationship(back_populates="clauses")
+
+
+class PositionRole(Base):
+    """岗位绑定系统角色：任职该岗位的用户可自动同步获得角色。"""
+    __tablename__ = "position_roles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    position_id: Mapped[int] = mapped_column(ForeignKey("positions.id"), nullable=False, index=True)
+    role_id: Mapped[int] = mapped_column(ForeignKey("sys_roles.id"), nullable=False, index=True)

@@ -37,6 +37,8 @@ class Employee(Base):
     position_id: Mapped[Optional[int]] = mapped_column(ForeignKey("positions.id"), nullable=True)
     # 综合系统3.0账号绑定
     system_account_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    # 本地 RBAC 用户双向关联
+    sys_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), default="active")  # active/leave/resigned
     hire_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     leave_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)

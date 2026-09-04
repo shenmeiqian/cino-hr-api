@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.auth import require_api_key
+from app.auth import AuthContext, require_perm, require_user_or_api_key
 from app.database import get_db
 from app.models.permission import PermissionEvent
 from app.schemas.permission import PermissionEventOut, PermissionGrantIn, PermissionRevokeIn
@@ -10,12 +10,12 @@ from app.services.permission_service import grant_permission, revoke_permission
 router = APIRouter(
     prefix="/api/v1/permissions",
     tags=["T08-permissions"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_user_or_api_key)],
 )
 
 
 @router.post("/grant", response_model=PermissionEventOut)
-def grant(body: PermissionGrantIn, db: Session = Depends(get_db)):
+def grant(body: PermissionGrantIn, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("btn.permissions.grant"))):
     """授予权限。媒体联络人申请 wipe/outbound 须通过 safety/sop/wipe_r2 有效培训。"""
     return grant_permission(
         db,
@@ -27,7 +27,7 @@ def grant(body: PermissionGrantIn, db: Session = Depends(get_db)):
 
 
 @router.post("/revoke", response_model=PermissionEventOut)
-def revoke(body: PermissionRevokeIn, db: Session = Depends(get_db)):
+def revoke(body: PermissionRevokeIn, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("btn.permissions.revoke"))):
     """回收权限。关键岗位因 leave/project_end 触发时 due_at=T+0。"""
     return revoke_permission(
         db,
@@ -40,7 +40,7 @@ def revoke(body: PermissionRevokeIn, db: Session = Depends(get_db)):
 
 
 @router.get("/events", response_model=list[PermissionEventOut])
-def list_events(employee_id: int | None = None, db: Session = Depends(get_db)):
+def list_events(employee_id: int | None = None, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("menu.permissions"))):
     q = db.query(PermissionEvent)
     if employee_id:
         q = q.filter(PermissionEvent.employee_id == employee_id)

@@ -33,10 +33,12 @@ class PositionCreate(BaseModel):
     jd_summary: Optional[str] = None
     status: str = "active"
     clauses: list[PositionClauseCreate] = []
+    role_ids: list[int] = []
 
 
 class PositionUpdate(BaseModel):
     title: Optional[str] = None
+    role_ids: Optional[list[int]] = None
     dept_id: Optional[int] = None
     level: Optional[str] = None
     is_universal_temp: Optional[bool] = None
@@ -54,4 +56,6 @@ class PositionOut(ORMModel):
     jd_summary: Optional[str] = None
     status: str
     clauses: list[PositionClauseOut] = []
+    role_ids: list[int] = []
+    role_codes: list[str] = []
     created_at: Optional[datetime] = None

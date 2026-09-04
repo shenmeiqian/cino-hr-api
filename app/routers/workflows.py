@@ -5,31 +5,28 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import require_api_key
+from app.auth import AuthContext, require_user_or_api_key
 from app.database import get_db
-from app.models.workflow import WorkflowDefinition, WorkflowInstance
+from app.models.workflow import WorkflowDefinition, WorkflowHistory, WorkflowInstance
+from app.schemas.sys_rbac import WorkflowSubmitIn, WorkflowTodoOut
 from app.schemas.workflow import (
     WorkflowAdvance,
     WorkflowDefinitionCreate,
     WorkflowDefinitionOut,
     WorkflowDefinitionUpdate,
+    WorkflowHistoryOut,
     WorkflowInstanceCreate,
+    WorkflowInstanceDetailOut,
     WorkflowInstanceOut,
 )
+from app.services import workflow_service as wfs
+from app.services.notify_service import notify_workflow_event
 
 router = APIRouter(
-    prefix="/api/v1/workflows", tags=["workflows"], dependencies=[Depends(require_api_key)]
+    prefix="/api/v1/workflows",
+    tags=["workflows"],
+    dependencies=[Depends(require_user_or_api_key)],
 )
-
-
-def _parse_json(raw: str | None) -> list:
-    if not raw:
-        return []
-    try:
-        data = json.loads(raw)
-        return data if isinstance(data, list) else []
-    except json.JSONDecodeError:
-        return []
 
 
 def _to_out(row: WorkflowDefinition) -> WorkflowDefinitionOut:
@@ -43,8 +40,8 @@ def _to_out(row: WorkflowDefinition) -> WorkflowDefinitionOut:
         edges_json=row.edges_json or "[]",
         created_at=row.created_at,
         updated_at=row.updated_at,
-        nodes=_parse_json(row.nodes_json),
-        edges=_parse_json(row.edges_json),
+        nodes=wfs.parse_json(row.nodes_json),
+        edges=wfs.parse_json(row.edges_json),
     )
 
 
@@ -110,7 +107,7 @@ def publish_definition(item_id: int, db: Session = Depends(get_db)):
     row = db.get(WorkflowDefinition, item_id)
     if not row:
         raise HTTPException(404, detail="流程定义不存在")
-    nodes = _parse_json(row.nodes_json)
+    nodes = wfs.parse_json(row.nodes_json)
     if not nodes:
         raise HTTPException(400, detail="请先设计节点后再发布")
     row.status = "published"
@@ -121,82 +118,155 @@ def publish_definition(item_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/instances", response_model=list[WorkflowInstanceOut])
-def list_instances(db: Session = Depends(get_db)):
-    return db.query(WorkflowInstance).order_by(WorkflowInstance.id.desc()).all()
+def list_instances(
+    db: Session = Depends(get_db),
+    business_type: str | None = None,
+    business_id: int | None = None,
+):
+    q = db.query(WorkflowInstance)
+    if business_type:
+        q = q.filter(WorkflowInstance.business_type == business_type)
+    if business_id is not None:
+        q = q.filter(WorkflowInstance.business_id == business_id)
+    return q.order_by(WorkflowInstance.id.desc()).all()
 
 
 @router.post("/instances", response_model=WorkflowInstanceOut)
 def start_instance(body: WorkflowInstanceCreate, db: Session = Depends(get_db)):
-    defn = db.get(WorkflowDefinition, body.definition_id)
-    if not defn:
-        raise HTTPException(404, detail="流程定义不存在")
-    if defn.status != "published":
-        raise HTTPException(400, detail="仅已发布流程可启动实例")
-    nodes = _parse_json(defn.nodes_json)
-    start = next((n for n in nodes if n.get("type") == "start"), None)
-    current = None
-    if start:
-        edges = _parse_json(defn.edges_json)
-        nxt = next((e for e in edges if e.get("source") == start.get("id")), None)
-        current = nxt.get("target") if nxt else start.get("id")
-    row = WorkflowInstance(
-        definition_id=body.definition_id,
+    return wfs.start_instance(
+        db,
         business_type=body.business_type,
         business_id=body.business_id,
-        status="running",
-        current_node_id=current,
+        definition_id=body.definition_id,
     )
-    db.add(row)
+
+
+@router.post("/submit", response_model=WorkflowInstanceOut)
+def submit_document(
+    body: WorkflowSubmitIn,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_user_or_api_key),
+):
+    """单据提交审批：按 business_type 绑定已发布流程并启动实例。"""
+    row = wfs.start_instance(
+        db,
+        business_type=body.business_type,
+        business_id=body.business_id,
+        definition_id=body.definition_id,
+        definition_code=body.definition_code,
+    )
+    actor = "api-key" if auth.is_api_key else (auth.user.username if auth.user else "user")
+    db.add(
+        WorkflowHistory(
+            instance_id=row.id,
+            node_id=row.current_node_id,
+            node_label="提交审批",
+            action="submit",
+            actor=actor,
+            comment="单据提交审批流",
+        )
+    )
     db.commit()
     db.refresh(row)
     return row
 
 
-@router.post("/instances/{item_id}/advance", response_model=WorkflowInstanceOut)
-def advance_instance(item_id: int, body: WorkflowAdvance, db: Session = Depends(get_db)):
+@router.get("/todos", response_model=list[WorkflowTodoOut])
+def my_todos(db: Session = Depends(get_db), auth: AuthContext = Depends(require_user_or_api_key)):
+    emp_id = None if auth.is_api_key else (auth.user.employee_id if auth.user else None)
+    # admin / api-key sees all running; others filtered by position code
+    is_admin = auth.is_api_key or ("admin" in [r.code for r in (auth.user.roles or [])])
+    items = wfs.list_todos_for_user(db, emp_id, is_api_key=is_admin)
+    return items
+
+
+def _load_business(db: Session, business_type: str, business_id: int):
+    from app.models.recruiting import RecruitingReq
+    from app.models.onboarding import Onboarding
+    from app.models.contract import Contract
+    from app.models.emergency import EmergencyApproval
+    from app.models.ticket import Ticket
+    from app.services.pipeline_service import enrich
+
+    mapping = {
+        "recruiting": RecruitingReq,
+        "onboarding": Onboarding,
+        "contracts": Contract,
+        "emergency": EmergencyApproval,
+        "tickets": Ticket,
+    }
+    model = mapping.get(business_type)
+    if not model:
+        return {"error": f"未知业务类型: {business_type}"}
+    row = db.get(model, business_id)
+    if not row:
+        return {"error": f"业务单据不存在: {business_type}#{business_id}"}
+    data = {c.name: getattr(row, c.name) for c in row.__table__.columns}
+    for k, v in list(data.items()):
+        if hasattr(v, "isoformat"):
+            data[k] = v.isoformat()
+    if business_type == "recruiting":
+        data.update(enrich(db, row))
+    return data
+
+
+@router.get("/instances/{item_id}", response_model=WorkflowInstanceDetailOut)
+def get_instance_detail(item_id: int, db: Session = Depends(get_db)):
     row = db.get(WorkflowInstance, item_id)
     if not row:
         raise HTTPException(404, detail="流程实例不存在")
-    if row.status != "running":
-        raise HTTPException(400, detail=f"实例状态为 {row.status}，无法推进")
-    if body.action == "reject":
-        row.status = "rejected"
-        db.commit()
-        db.refresh(row)
-        return row
-    if body.action != "approve":
-        raise HTTPException(400, detail="action 须为 approve 或 reject")
-
     defn = db.get(WorkflowDefinition, row.definition_id)
-    if not defn:
-        raise HTTPException(404, detail="流程定义不存在")
-    nodes = {n["id"]: n for n in _parse_json(defn.nodes_json) if "id" in n}
-    edges = _parse_json(defn.edges_json)
-    cur = row.current_node_id
-    if not cur or cur not in nodes:
-        row.status = "approved"
-        db.commit()
-        db.refresh(row)
-        return row
-    node = nodes[cur]
-    if node.get("type") == "end":
-        row.status = "approved"
-        db.commit()
-        db.refresh(row)
-        return row
-    nxt_edge = next((e for e in edges if e.get("source") == cur), None)
-    if not nxt_edge:
-        row.status = "approved"
-        db.commit()
-        db.refresh(row)
-        return row
-    nxt_id = nxt_edge.get("target")
-    nxt = nodes.get(nxt_id) if nxt_id else None
-    if not nxt or nxt.get("type") == "end":
-        row.current_node_id = nxt_id
-        row.status = "approved"
-    else:
-        row.current_node_id = nxt_id
+    meta = wfs.current_node_meta(defn, row.current_node_id)
+    hist = (
+        db.query(WorkflowHistory)
+        .filter(WorkflowHistory.instance_id == item_id)
+        .order_by(WorkflowHistory.id.asc())
+        .all()
+    )
+    return WorkflowInstanceDetailOut(
+        id=row.id,
+        definition_id=row.definition_id,
+        business_type=row.business_type,
+        business_id=row.business_id,
+        status=row.status,
+        current_node_id=row.current_node_id,
+        created_at=row.created_at,
+        definition_code=defn.code if defn else None,
+        definition_name=defn.name if defn else None,
+        current_node_label=meta.get("current_node_label"),
+        approver_role=meta.get("approver_role"),
+        history=[WorkflowHistoryOut.model_validate(h) for h in hist],
+        business=_load_business(db, row.business_type, row.business_id),
+    )
+
+
+@router.post("/instances/{item_id}/advance", response_model=WorkflowInstanceOut)
+def advance_instance(
+    item_id: int,
+    body: WorkflowAdvance,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_user_or_api_key),
+):
+    before = db.get(WorkflowInstance, item_id)
+    if not before:
+        raise HTTPException(404, detail="流程实例不存在")
+    defn = db.get(WorkflowDefinition, before.definition_id)
+    meta = wfs.current_node_meta(defn, before.current_node_id)
+    actor = "api-key" if auth.is_api_key else (auth.user.username if auth.user else "user")
+    row = wfs.advance_instance(db, item_id, body.action)
+    db.add(
+        WorkflowHistory(
+            instance_id=item_id,
+            node_id=before.current_node_id,
+            node_label=meta.get("current_node_label"),
+            action=body.action,
+            actor=actor,
+            comment=body.comment,
+        )
+    )
     db.commit()
-    db.refresh(row)
+    try:
+        notify_workflow_event(db, row, "推进" if body.action == "approve" else "驳回")
+    except Exception:
+        pass
     return row

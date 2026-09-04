@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import require_api_key
+from app.auth import AuthContext, require_perm, require_user_or_api_key
 from app.database import get_db
 from app.models.attendance import AttendanceException
 from app.schemas.attendance import AttendanceCreate, AttendanceOut, AttendanceUpdate
@@ -9,12 +9,12 @@ from app.schemas.attendance import AttendanceCreate, AttendanceOut, AttendanceUp
 router = APIRouter(
     prefix="/api/v1/attendance-exceptions",
     tags=["T09-attendance"],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_user_or_api_key)],
 )
 
 
 @router.post("", response_model=AttendanceOut)
-def create_exc(body: AttendanceCreate, db: Session = Depends(get_db)):
+def create_exc(body: AttendanceCreate, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("btn.attendance.create"))):
     row = AttendanceException(**body.model_dump())
     db.add(row)
     db.commit()
@@ -23,7 +23,7 @@ def create_exc(body: AttendanceCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[AttendanceOut])
-def list_exc(employee_id: int | None = None, db: Session = Depends(get_db)):
+def list_exc(employee_id: int | None = None, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("menu.attendance"))):
     q = db.query(AttendanceException)
     if employee_id:
         q = q.filter(AttendanceException.employee_id == employee_id)
@@ -31,7 +31,7 @@ def list_exc(employee_id: int | None = None, db: Session = Depends(get_db)):
 
 
 @router.get("/{item_id}", response_model=AttendanceOut)
-def get_exc(item_id: int, db: Session = Depends(get_db)):
+def get_exc(item_id: int, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("menu.attendance"))):
     row = db.get(AttendanceException, item_id)
     if not row:
         raise HTTPException(404, detail="考勤异常不存在")
@@ -39,7 +39,7 @@ def get_exc(item_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{item_id}", response_model=AttendanceOut)
-def update_exc(item_id: int, body: AttendanceUpdate, db: Session = Depends(get_db)):
+def update_exc(item_id: int, body: AttendanceUpdate, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("api.attendance.write"))):
     row = db.get(AttendanceException, item_id)
     if not row:
         raise HTTPException(404, detail="考勤异常不存在")
@@ -51,7 +51,7 @@ def update_exc(item_id: int, body: AttendanceUpdate, db: Session = Depends(get_d
 
 
 @router.delete("/{item_id}")
-def delete_exc(item_id: int, db: Session = Depends(get_db)):
+def delete_exc(item_id: int, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("api.attendance.write"))):
     row = db.get(AttendanceException, item_id)
     if not row:
         raise HTTPException(404, detail="考勤异常不存在")

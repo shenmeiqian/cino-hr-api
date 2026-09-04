@@ -1,4 +1,4 @@
-"""Workflow definition & instance for approval flow designer."""
+"""Workflow definition, instance & advance history."""
 from datetime import datetime
 from typing import Optional
 
@@ -15,7 +15,7 @@ class WorkflowDefinition(Base):
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(32), default="draft")  # draft/published/archived
+    status: Mapped[str] = mapped_column(String(32), default="draft")
     nodes_json: Mapped[str] = mapped_column(Text, default="[]")
     edges_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -33,8 +33,19 @@ class WorkflowInstance(Base):
     )
     business_type: Mapped[str] = mapped_column(String(64), nullable=False)
     business_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(32), default="running"
-    )  # running/approved/rejected/cancelled
+    status: Mapped[str] = mapped_column(String(32), default="running")
     current_node_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class WorkflowHistory(Base):
+    __tablename__ = "workflow_histories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("workflow_instances.id"), nullable=False)
+    node_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    node_label: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)  # submit|approve|reject
+    actor: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
