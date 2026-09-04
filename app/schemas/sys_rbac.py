@@ -16,7 +16,11 @@ class UserBrief(ORMModel):
     username: str
     display_name: str
     employee_id: Optional[int] = None
+    position_id: Optional[int] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
     status: str
+    last_login_at: Optional[datetime] = None
 
 
 class LoginOut(BaseModel):
@@ -38,6 +42,9 @@ class SysUserCreate(BaseModel):
     display_name: str
     password: str
     employee_id: Optional[int] = None
+    position_id: Optional[int] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
     status: str = "active"
     role_ids: list[int] = Field(default_factory=list)
 
@@ -46,6 +53,9 @@ class SysUserUpdate(BaseModel):
     display_name: Optional[str] = None
     password: Optional[str] = None
     employee_id: Optional[int] = None
+    position_id: Optional[int] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
     status: Optional[str] = None
     role_ids: Optional[list[int]] = None
 
@@ -55,7 +65,13 @@ class SysUserOut(ORMModel):
     username: str
     display_name: str
     employee_id: Optional[int] = None
+    position_id: Optional[int] = None
+    position_code: Optional[str] = None
+    position_title: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
     status: str
+    last_login_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     role_ids: list[int] = Field(default_factory=list)
     role_codes: list[str] = Field(default_factory=list)
@@ -113,6 +129,11 @@ class PermTreeNode(BaseModel):
     children: list["PermTreeNode"] = Field(default_factory=list)
 
 
+class ButtonPermBrief(BaseModel):
+    code: str
+    name: str
+
+
 class SysMenuCreate(BaseModel):
     parent_id: Optional[int] = None
     title: str
@@ -145,6 +166,8 @@ class SysMenuOut(ORMModel):
     permission_code: str
     visible: bool = True
     component: Optional[str] = None
+    # button permissions under this menu's permission_code (documentation / config)
+    button_perms: list[ButtonPermBrief] = Field(default_factory=list)
     children: list["SysMenuOut"] = Field(default_factory=list)
 
 
@@ -167,4 +190,3 @@ class WorkflowTodoOut(ORMModel):
     current_node_label: Optional[str] = None
     approver_role: Optional[str] = None
     created_at: Optional[datetime] = None
-

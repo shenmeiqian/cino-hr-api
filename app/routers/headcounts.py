@@ -1,18 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import require_user_or_api_key
+from app.auth import AuthContext, require_perm, require_user_or_api_key
 from app.database import get_db
 from app.models.headcount import HeadcountPlan
 from app.schemas.headcount import HeadcountCreate, HeadcountOut, HeadcountUpdate
 
-router = APIRouter(
-    prefix="/api/v1/headcounts", tags=["T02-headcounts"], dependencies=[Depends(require_user_or_api_key)]
-)
+router = APIRouter(prefix="/api/v1/headcounts", tags=["T02-headcounts"])
 
 
 @router.post("", response_model=HeadcountOut)
-def create_headcount(body: HeadcountCreate, db: Session = Depends(get_db)):
+def create_headcount(
+    body: HeadcountCreate,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("api.org.write")),
+):
     row = HeadcountPlan(**body.model_dump())
     if row.vacancy == 0 and row.planned_count:
         row.vacancy = max(0, row.planned_count - row.actual_count)
@@ -23,7 +25,11 @@ def create_headcount(body: HeadcountCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[HeadcountOut])
-def list_headcounts(year_month: str | None = None, db: Session = Depends(get_db)):
+def list_headcounts(
+    year_month: str | None = None,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("menu.org")),
+):
     q = db.query(HeadcountPlan)
     if year_month:
         q = q.filter(HeadcountPlan.year_month == year_month)
@@ -31,7 +37,11 @@ def list_headcounts(year_month: str | None = None, db: Session = Depends(get_db)
 
 
 @router.get("/{item_id}", response_model=HeadcountOut)
-def get_headcount(item_id: int, db: Session = Depends(get_db)):
+def get_headcount(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("menu.org")),
+):
     row = db.get(HeadcountPlan, item_id)
     if not row:
         raise HTTPException(404, detail="编制计划不存在")
@@ -39,7 +49,12 @@ def get_headcount(item_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{item_id}", response_model=HeadcountOut)
-def update_headcount(item_id: int, body: HeadcountUpdate, db: Session = Depends(get_db)):
+def update_headcount(
+    item_id: int,
+    body: HeadcountUpdate,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("api.org.write")),
+):
     row = db.get(HeadcountPlan, item_id)
     if not row:
         raise HTTPException(404, detail="编制计划不存在")
@@ -52,7 +67,11 @@ def update_headcount(item_id: int, body: HeadcountUpdate, db: Session = Depends(
 
 
 @router.delete("/{item_id}")
-def delete_headcount(item_id: int, db: Session = Depends(get_db)):
+def delete_headcount(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("api.org.write")),
+):
     row = db.get(HeadcountPlan, item_id)
     if not row:
         raise HTTPException(404, detail="编制计划不存在")

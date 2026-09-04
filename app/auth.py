@@ -51,6 +51,13 @@ def revoke_token(db: Session, token: str) -> None:
         db.commit()
 
 
+def revoke_user_tokens(db: Session, user_id: int) -> int:
+    """Invalidate all session tokens for a user (freeze / disable / reset password)."""
+    n = db.query(SysToken).filter(SysToken.user_id == user_id).delete()
+    db.flush()
+    return n
+
+
 def get_user_permissions(user: SysUser) -> list[SysPermission]:
     seen: dict[int, SysPermission] = {}
     for role in user.roles or []:
@@ -70,6 +77,16 @@ def load_user_with_rbac(db: Session, user_id: int) -> Optional[SysUser]:
         .filter(SysUser.id == user_id)
         .first()
     )
+
+
+def user_login_blocked_message(status_value: str) -> str | None:
+    if status_value == "active":
+        return None
+    if status_value == "frozen":
+        return "账号已冻结，请联系管理员解冻后再登录"
+    if status_value == "disabled":
+        return "账号已禁用，无法登录"
+    return f"账号状态异常（{status_value}），无法登录"
 
 
 class AuthContext:
@@ -132,8 +149,13 @@ async def require_user_or_api_key(
             db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录已过期，请重新登录")
     user = load_user_with_rbac(db, row.user_id)
-    if not user or user.status != "active":
+    if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户不存在或已禁用")
+    blocked = user_login_blocked_message(user.status)
+    if blocked:
+        db.delete(row)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=blocked)
     perms = get_user_permissions(user)
     return AuthContext(is_api_key=False, user=user, token=token, permissions=perms)
 

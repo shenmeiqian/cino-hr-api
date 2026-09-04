@@ -18,7 +18,12 @@ class SysUser(Base):
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
     employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True)
-    status: Mapped[str] = mapped_column(String(32), default="active")  # active/disabled
+    position_id: Mapped[Optional[int]] = mapped_column(ForeignKey("positions.id"), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    # active | frozen | disabled
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     roles: Mapped[list["SysRole"]] = relationship(

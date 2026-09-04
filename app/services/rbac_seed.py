@@ -219,34 +219,61 @@ def seed_rbac(db: Session) -> None:
     ]
     _set_role_perms(db, viewer, viewer_codes, by_code)
 
-    def ensure_user(username: str, password: str, display: str, role: SysRole, emp_no: str | None):
+    from app.models.position import Position
+
+    def _pos_id(code: str | None) -> int | None:
+        if not code:
+            return None
+        row = db.query(Position).filter(Position.code == code).first()
+        return row.id if row else None
+
+    def ensure_user(
+        username: str,
+        password: str,
+        display: str,
+        role: SysRole,
+        emp_no: str | None,
+        position_code: str | None = None,
+        phone: str | None = None,
+        email: str | None = None,
+    ):
         u = db.query(SysUser).filter(SysUser.username == username).first()
         emp_id = None
         if emp_no:
             emp = db.query(Employee).filter(Employee.emp_no == emp_no).first()
             emp_id = emp.id if emp else None
+        pos_id = _pos_id(position_code)
         if not u:
             u = SysUser(
                 username=username,
                 display_name=display,
                 password_hash=hash_password(password),
                 employee_id=emp_id,
+                position_id=pos_id,
+                phone=phone,
+                email=email,
                 status="active",
             )
             db.add(u)
             db.flush()
         else:
-            # keep password stable for demos; refresh display/status
+            # keep password stable for demos; refresh display/status/basics
             u.display_name = display
             u.status = "active"
             if emp_id and not u.employee_id:
                 u.employee_id = emp_id
+            if pos_id and not getattr(u, "position_id", None):
+                u.position_id = pos_id
+            if phone and not getattr(u, "phone", None):
+                u.phone = phone
+            if email and not getattr(u, "email", None):
+                u.email = email
         # replace roles to single demo role
         db.query(SysUserRole).filter(SysUserRole.user_id == u.id).delete()
         db.add(SysUserRole(user_id=u.id, role_id=role.id))
 
-    ensure_user("admin", "admin123", "系统管理员", admin, "E2001")
-    ensure_user("hr", "hr123", "王人事", hr, "E2001")
-    ensure_user("viewer", "viewer123", "只读访客", viewer, "E1002")
+    ensure_user("admin", "admin123", "系统管理员", admin, "E2001", "HR-MANAGER", "13800000001", "admin@cino.local")
+    ensure_user("hr", "hr123", "王人事", hr, "E2001", "HR-MANAGER", "13800000002", "hr@cino.local")
+    ensure_user("viewer", "viewer123", "只读访客", viewer, "E1002", "MEDIA-CONTACT", None, "viewer@cino.local")
     db.commit()
     print("Seed RBAC+Menus: admin/hr/viewer + permission tree(parent_id) + SysMenu")

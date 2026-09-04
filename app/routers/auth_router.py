@@ -47,8 +47,14 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
     user = db.query(SysUser).filter(SysUser.username == body.username).first()
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, detail="用户名或密码错误")
-    if user.status != "active":
-        raise HTTPException(403, detail="用户已禁用")
+    from app.auth import user_login_blocked_message
+    from datetime import datetime
+
+    blocked = user_login_blocked_message(user.status)
+    if blocked:
+        raise HTTPException(403, detail=blocked)
+    user.last_login_at = datetime.utcnow()
+    db.commit()
     token = create_token(db, user.id)
     return _login_payload(db, user, token)
 

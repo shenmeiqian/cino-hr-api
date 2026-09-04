@@ -36,7 +36,7 @@ def _set_roles(db: Session, position_id: int, role_ids: list[int]) -> None:
 def create_position(
     body: PositionCreate,
     db: Session = Depends(get_db),
-    _auth: AuthContext = Depends(require_user_or_api_key),
+    _auth: AuthContext = Depends(require_perm("api.org.write")),
 ):
     if db.query(Position).filter(Position.code == body.code).first():
         raise HTTPException(400, detail="岗位编码已存在")
@@ -56,7 +56,7 @@ def create_position(
 
 
 @router.get("/positions", response_model=list[PositionOut])
-def list_positions(db: Session = Depends(get_db), _auth: AuthContext = Depends(require_user_or_api_key)):
+def list_positions(db: Session = Depends(get_db), _auth: AuthContext = Depends(require_user_or_api_key)):  # used by user form too
     return [_out(db, r) for r in db.query(Position).order_by(Position.id).all()]
 
 
@@ -73,7 +73,7 @@ def update_position(
     item_id: int,
     body: PositionUpdate,
     db: Session = Depends(get_db),
-    _auth: AuthContext = Depends(require_user_or_api_key),
+    _auth: AuthContext = Depends(require_perm("api.org.write")),
 ):
     row = db.get(Position, item_id)
     if not row:

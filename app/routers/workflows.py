@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import AuthContext, require_user_or_api_key
+from app.auth import AuthContext, require_perm, require_user_or_api_key
 from app.database import get_db
 from app.models.workflow import WorkflowDefinition, WorkflowHistory, WorkflowInstance
 from app.schemas.sys_rbac import WorkflowSubmitIn, WorkflowTodoOut
@@ -27,6 +27,16 @@ router = APIRouter(
     tags=["workflows"],
     dependencies=[Depends(require_user_or_api_key)],
 )
+
+
+# FE button codes must match BE require_perm (see reports/perm-map.md)
+SUBMIT_PERM_BY_BIZ = {
+    "recruiting": "btn.recruiting.submit",
+    "onboarding": "btn.onboarding.submit",
+    "contracts": "btn.contracts.submit",
+    "tickets": "btn.tickets.submit",
+    "emergency": "btn.emergency.submit",
+}
 
 
 def _to_out(row: WorkflowDefinition) -> WorkflowDefinitionOut:
@@ -52,7 +62,11 @@ def list_definitions(db: Session = Depends(get_db)):
 
 
 @router.post("/definitions", response_model=WorkflowDefinitionOut)
-def create_definition(body: WorkflowDefinitionCreate, db: Session = Depends(get_db)):
+def create_definition(
+    body: WorkflowDefinitionCreate,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("btn.workflows.create")),
+):
     if db.query(WorkflowDefinition).filter(WorkflowDefinition.code == body.code).first():
         raise HTTPException(400, detail=f"流程编码已存在: {body.code}")
     nodes = body.nodes or []
@@ -81,7 +95,10 @@ def get_definition(item_id: int, db: Session = Depends(get_db)):
 
 @router.put("/definitions/{item_id}", response_model=WorkflowDefinitionOut)
 def update_definition(
-    item_id: int, body: WorkflowDefinitionUpdate, db: Session = Depends(get_db)
+    item_id: int,
+    body: WorkflowDefinitionUpdate,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("btn.workflows.save")),
 ):
     row = db.get(WorkflowDefinition, item_id)
     if not row:
@@ -103,7 +120,11 @@ def update_definition(
 
 
 @router.post("/definitions/{item_id}/publish", response_model=WorkflowDefinitionOut)
-def publish_definition(item_id: int, db: Session = Depends(get_db)):
+def publish_definition(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("btn.workflows.publish")),
+):
     row = db.get(WorkflowDefinition, item_id)
     if not row:
         raise HTTPException(404, detail="流程定义不存在")
@@ -132,7 +153,11 @@ def list_instances(
 
 
 @router.post("/instances", response_model=WorkflowInstanceOut)
-def start_instance(body: WorkflowInstanceCreate, db: Session = Depends(get_db)):
+def start_instance(
+    body: WorkflowInstanceCreate,
+    db: Session = Depends(get_db),
+    _auth: AuthContext = Depends(require_perm("btn.workflows.start")),
+):
     return wfs.start_instance(
         db,
         business_type=body.business_type,
@@ -148,6 +173,9 @@ def submit_document(
     auth: AuthContext = Depends(require_user_or_api_key),
 ):
     """单据提交审批：按 business_type 绑定已发布流程并启动实例。"""
+    need = SUBMIT_PERM_BY_BIZ.get(body.business_type)
+    if need and not auth.has_perm(need):
+        raise HTTPException(403, detail=f"无权限执行此操作（缺少权限码 {need}）")
     row = wfs.start_instance(
         db,
         business_type=body.business_type,
@@ -245,7 +273,7 @@ def advance_instance(
     item_id: int,
     body: WorkflowAdvance,
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_user_or_api_key),
+    auth: AuthContext = Depends(require_perm("btn.workflows.advance")),
 ):
     before = db.get(WorkflowInstance, item_id)
     if not before:
