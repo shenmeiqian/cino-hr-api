@@ -1,11 +1,58 @@
-# Optional: docker compose up --build
+# Production-like local / demo stack (image copies source; no bind-mount).
+#
+# Default SQLite (data on named volume):
+#   docker compose up --build
+#
+# Optional Postgres:
+#   DATABASE_URL=postgresql+psycopg2://cino:cino@db:5432/cino_hr \
+#     docker compose --profile postgres up --build
+
 services:
-  cino-hr-api:
-    build: .
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cino-hr-api:local
     ports:
       - "8000:8000"
     environment:
-      API_KEY: demo-key
-      DATABASE_URL: sqlite:///./cino_hr.db
+      API_KEY: ${API_KEY:-demo-key}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/cino_hr.db}
+      FILE_LOCAL_DIR: ${FILE_LOCAL_DIR:-/data/files}
     volumes:
-      - ./:/app
+      - hr_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  # Enable with: docker compose --profile postgres up --build
+  # Also set DATABASE_URL=postgresql+psycopg2://cino:cino@db:5432/cino_hr
+  db:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cino
+      POSTGRES_PASSWORD: cino
+      POSTGRES_DB: cino_hr
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cino -d cino_hr"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  hr_data:
+  pg_data:
