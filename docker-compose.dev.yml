@@ -1,0 +1,23 @@
+# Live-reload override (bind-mounts source). Do not use for the default demo stack.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+services:
+  api:
+    volumes:
+      - ./:/app
+      - hr_data:/data
+    environment:
+      API_KEY: ${API_KEY:-demo-key}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/cino_hr.db}
+      FILE_LOCAL_DIR: ${FILE_LOCAL_DIR:-/data/files}
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]

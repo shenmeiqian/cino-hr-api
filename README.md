@@ -14,28 +14,53 @@
 
 ## 启动方式
 
+### Docker（推荐本地 / 演示）
+
+默认生产向配置：镜像内拷贝源码（**不** bind-mount），SQLite 写到 named volume `hr_data`。容器启动时 `docker/entrypoint.sh` 会执行 `python -m app.seed`（空库建表并写入演示数据；已有数据则跳过核心 seed），再启动 uvicorn。
+
 ```bash
-cd /workspace/cino-hr-api
+docker compose up --build
+# 后台: docker compose up --build -d
+```
+
+| 项 | 地址 / 值 |
+|---|---|
+| 健康检查 | http://localhost:8000/health → `{"status":"ok",...}` |
+| Swagger | http://localhost:8000/docs |
+| 默认 API Key | 请求头 `X-API-Key: demo-key`（环境变量 `API_KEY`） |
+| SQLite 数据 | volume `hr_data` → 容器内 `/data/cino_hr.db` |
+
+停止：`docker compose down`。保留数据 volume：不要加 `-v`。
+
+本地热重载（bind-mount 源码，仅开发用）：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+可选 Postgres（profile `postgres`）：
+
+```bash
+DATABASE_URL=postgresql+psycopg2://cino:cino@db:5432/cino_hr \
+  docker compose --profile postgres up --build
+```
+
+### 本机直接跑
+
+```bash
 pip install -r requirements.txt
 python -m app.seed
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 # 或: bash scripts/run.sh
 ```
 
-可选 Docker：
-
-```bash
-docker compose up --build
-```
-
 健康检查：`GET /health`  
 Swagger：http://localhost:8000/docs
 
-### 切 Postgres
+### 切 Postgres（本机）
 
 ```bash
 export DATABASE_URL="postgresql+psycopg2://user:pass@localhost:5432/cino_hr"
-# requirements 中自行增加 psycopg2-binary
 python -m app.seed
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
@@ -190,7 +215,6 @@ Seed 说明：E1001=媒体联络人无培训；E1002=媒体联络人三项培训
 ## 测试
 
 ```bash
-cd /workspace/cino-hr-api
 pytest -q
 ```
 
@@ -214,9 +238,13 @@ cino-hr-api/
 │   ├── routers/         # 含 integration（综合系统3.0）
 │   └── services/        # permission + kpi V2.2 + integration
 ├── tests/
+├── docker/
+│   └── entrypoint.sh   # seed then uvicorn
 ├── scripts/run.sh
 ├── scripts/demo_integration.sh
 ├── requirements.txt
+├── Dockerfile
 ├── docker-compose.yml
+├── docker-compose.dev.yml
 └── README.md
 ```
