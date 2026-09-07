@@ -12,7 +12,7 @@ from app.schemas.performance import (
     ScorecardMappingCreate,
     ScorecardMappingOut,
 )
-from app.services.kpi_service import ensure_default_mappings, run_kpi_batch
+from app.services.kpi_service import KPI_MAX_SCORE, KPI_SCHEME, ensure_default_mappings, run_kpi_batch
 
 router = APIRouter(prefix="/api/v1", tags=["T10-T11-T15-kpi"], dependencies=[Depends(require_user_or_api_key)])
 
@@ -42,7 +42,12 @@ def create_mapping(body: ScorecardMappingCreate, db: Session = Depends(get_db), 
     return row
 
 
-@router.get("/scorecard-mappings", response_model=list[ScorecardMappingOut])
+@router.get(
+    "/scorecard-mappings",
+    response_model=list[ScorecardMappingOut],
+    summary="KPI 条款映射",
+    description="返回 T11 映射；若为空则写入人事主管 KPI V2.2 默认条款（3.1–3.12 明细，权重合计 100）。",
+)
 def list_mappings(db: Session = Depends(get_db)):
     ensure_default_mappings(db)
     return db.query(ScorecardMapping).all()
@@ -50,18 +55,21 @@ def list_mappings(db: Session = Depends(get_db)):
 
 @router.post("/kpi/batch/{yyyy_mm}/run", response_model=KpiRunResult)
 def run_batch(yyyy_mm: str, db: Session = Depends(get_db), _auth: AuthContext = Depends(require_perm("btn.kpi.run"))):
-    """计算人事主管 KPI 占位得分写入 T15。"""
+    """按人事主管 KPI V2.2 计算 3.1–3.12（含 R2/ISO 分列）得分写入 T15，供 Web 展示条款明细。"""
     batch, scores, total = run_kpi_batch(db, yyyy_mm)
     return KpiRunResult(
         year_month=yyyy_mm,
         batch_id=batch.id,
+        scheme=KPI_SCHEME,
         scores=scores,
         total_weighted_score=total,
+        max_score=KPI_MAX_SCORE,
     )
 
 
 @router.get("/kpi/scores", response_model=list[HrManagerScoreOut])
 def list_scores(year_month: str | None = None, db: Session = Depends(get_db)):
+    """查询 T15 人事主管 KPI 得分。V2.2 跑批后 kpi_code 为 3.1–3.13（R2/ISO 分列）。"""
     q = db.query(HrManagerScore)
     if year_month:
         q = q.filter(HrManagerScore.year_month == year_month)

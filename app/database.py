@@ -64,6 +64,9 @@ def _sqlite_ensure_columns() -> None:
         for table, col, ddl in alters:
             rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
             names = {r[1] for r in rows}
+            if not names:
+                # 内存库 + NullPool 时本连接可能尚无表（测试 lifespan）；跳过
+                continue
             if col not in names:
                 conn.execute(text(ddl))
                 print(f"Schema migrate: added {table}.{col}")

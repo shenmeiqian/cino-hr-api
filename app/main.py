@@ -22,7 +22,7 @@ from app.routers import (
     trainings,
     workflows,
 )
-from app.routers import auth_router, sys_rbac, files, notifications
+from app.routers import auth_router, sys_rbac, files, notifications, integration
 
 
 @asynccontextmanager
@@ -43,6 +43,7 @@ app = FastAPI(
     description=(
         "CINO 回收公司人事微服务。"
         "鉴权：登录 Bearer token 或请求头 X-API-Key（默认 demo-key）。"
+        "综合系统 3.0 对接见 /api/v1/integration/* ；KPI 跑批按 V2.2 条款 3.1–3.12 明细计分。"
     ),
     lifespan=lifespan,
 )
@@ -72,6 +73,7 @@ app.include_router(tickets.router)
 app.include_router(workflows.router)
 app.include_router(files.router)
 app.include_router(notifications.router)
+app.include_router(integration.router)
 
 
 @app.get("/health", tags=["system"])

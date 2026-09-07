@@ -12,6 +12,7 @@ from app.models.training import Training
 from app.models.workflow import WorkflowDefinition
 from app.services.kpi_service import ensure_default_mappings
 from app.services.rbac_seed import seed_rbac
+from app.services.integration_service import seed_integration
 
 
 def _approval_flow(code: str, name: str, description: str, role1: str, role2: str) -> dict:
@@ -153,6 +154,7 @@ def seed() -> None:
             seed_workflows(db)
             seed_rbac(db)
             seed_position_roles(db)
+            seed_integration(db)
             return
 
         hr = Department(code="HR", name="人事行政部")
@@ -314,6 +316,7 @@ def seed() -> None:
         seed_workflows(db)
         seed_rbac(db)
         seed_position_roles(db)
+        seed_integration(db)
     finally:
         db.close()
 
