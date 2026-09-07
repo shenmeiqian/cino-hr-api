@@ -14,16 +14,18 @@ SENSITIVE_SCOPES = {"wipe", "outbound"}
 CRITICAL_REVOKE_TRIGGERS = {"leave", "project_end"}
 
 
-def _scopes_csv(scopes: list[str]) -> str:
+def scopes_csv(scopes: list[str]) -> str:
     return ",".join(sorted({s.strip().lower() for s in scopes if s.strip()}))
 
 
-def check_media_contact_training_gate(db: Session, employee: Employee, scopes: list[str]) -> None:
-    """媒体联络人申请 wipe/outbound 时，须三项培训均 passed 且未过期，否则 403。"""
+def inspect_media_training_gate(
+    db: Session, employee: Employee, scopes: list[str]
+) -> tuple[bool, list[str]]:
+    """返回 (是否适用媒体联络人闸门, 缺失或过期的课程编码)。"""
     normalized = {s.strip().lower() for s in scopes}
-    needs_gate = employee.is_media_contact and bool(normalized & SENSITIVE_SCOPES)
+    needs_gate = bool(employee.is_media_contact) and bool(normalized & SENSITIVE_SCOPES)
     if not needs_gate:
-        return
+        return False, []
 
     today = date.today()
     missing: list[str] = []
@@ -42,7 +44,12 @@ def check_media_contact_training_gate(db: Session, employee: Employee, scopes: l
         )
         if not row:
             missing.append(course)
+    return True, missing
 
+
+def check_media_contact_training_gate(db: Session, employee: Employee, scopes: list[str]) -> None:
+    """媒体联络人申请 wipe/outbound 时，须三项培训均 passed 且未过期，否则 403。"""
+    _gate, missing = inspect_media_training_gate(db, employee, scopes)
     if missing:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -71,7 +78,7 @@ def grant_permission(
     event = PermissionEvent(
         employee_id=employee_id,
         event_type="grant",
-        scopes=_scopes_csv(scopes),
+        scopes=scopes_csv(scopes),
         reason=reason,
         trigger="normal",
         status="done",
@@ -112,7 +119,7 @@ def revoke_permission(
     event = PermissionEvent(
         employee_id=employee_id,
         event_type="revoke",
-        scopes=_scopes_csv(scopes),
+        scopes=scopes_csv(scopes),
         reason=reason,
         trigger=trigger_norm,
         status=status_val,

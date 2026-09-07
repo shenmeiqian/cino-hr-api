@@ -61,5 +61,7 @@ class HrManagerScoreOut(ORMModel):
 class KpiRunResult(BaseModel):
     year_month: str
     batch_id: int
+    scheme: str = "V2.2"
     scores: list[HrManagerScoreOut]
     total_weighted_score: float
+    max_score: float = 100.0

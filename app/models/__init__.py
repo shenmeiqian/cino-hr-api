@@ -24,6 +24,7 @@ from app.models.sys_rbac import (
 from app.models.file_object import FileObject, FileBlob
 from app.models.notification import NotificationLog, AppSetting
 from app.models.sys_menu import SysMenu
+from app.models.integration import IntegrationConfig, IntegrationSyncLog
 
 __all__ = [
     "Department",
@@ -58,4 +59,6 @@ __all__ = [
     "NotificationLog",
     "AppSetting",
     "SysMenu",
+    "IntegrationConfig",
+    "IntegrationSyncLog",
 ]

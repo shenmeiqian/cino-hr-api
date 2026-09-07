@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     api_key: str = "demo-key"
     database_url: str = "sqlite:///./cino_hr.db"
     app_title: str = "CINO HR API"
-    app_version: str = "0.2.0"
+    app_version: str = "0.3.0"
 
     # Phase2: merge PositionRole into effective roles on login/me (default true for demo)
     sync_roles_from_position: bool = True

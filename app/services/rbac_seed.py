@@ -87,6 +87,10 @@ PERM_TREE = [
     ("btn.permissions.grant", "开权", "button", "menu.permissions", 1),
     ("btn.permissions.revoke", "停权", "button", "menu.permissions", 2),
     ("api.permissions.write", "开权写API", "api", "menu.permissions", 3),
+    ("menu.integration", "综合系统3.0对接", "menu", "menu.sys", 96),
+    ("btn.integration.sync", "同步3.0用户", "button", "menu.integration", 1),
+    ("api.integration.read", "对接只读API", "api", "menu.integration", 2),
+    ("api.integration.write", "对接写API", "api", "menu.integration", 3),
 ]
 
 # (title, path, permission_code, parent_permission_code, sort, icon)
@@ -117,6 +121,7 @@ MENU_SEED = [
     ("权限目录", "/sys/permissions", "menu.sys.permissions", "menu.sys", 93, None),
     ("菜单配置", "/sys/menus", "menu.sys.menus", "menu.sys", 94, None),
     ("开权审计日志", "/permissions", "menu.permissions", "menu.sys", 95, None),
+    ("综合系统3.0对接", "/integration", "menu.integration", "menu.sys", 96, None),
 ]
 
 
@@ -146,11 +151,19 @@ def ensure_permissions(db: Session) -> dict[str, SysPermission]:
 
 
 def ensure_menus(db: Session) -> None:
-    if db.query(SysMenu).count() > 0:
-        return
-    code_to_id: dict[str, int] = {}
+    existing = {m.permission_code: m for m in db.query(SysMenu).all() if m.permission_code}
+    code_to_id: dict[str, int] = {code: m.id for code, m in existing.items()}
     for title, path, perm_code, parent_perm, sort, icon in MENU_SEED:
         parent_id = code_to_id.get(parent_perm) if parent_perm else None
+        row = existing.get(perm_code)
+        if row:
+            row.title = title
+            row.path = path
+            row.icon = icon
+            row.sort_order = sort
+            row.parent_id = parent_id
+            code_to_id[perm_code] = row.id
+            continue
         m = SysMenu(
             parent_id=parent_id,
             title=title,
@@ -162,6 +175,7 @@ def ensure_menus(db: Session) -> None:
         )
         db.add(m)
         db.flush()
+        existing[perm_code] = m
         code_to_id[perm_code] = m.id
     db.flush()
 
@@ -216,6 +230,7 @@ def seed_rbac(db: Session) -> None:
         and not c.startswith("menu.sys")
         and not c.startswith("menu.permissions")
         and c != "menu.notifications"
+        and c != "menu.integration"
     ]
     _set_role_perms(db, viewer, viewer_codes, by_code)
 
