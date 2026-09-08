@@ -1,5 +1,13 @@
 # Production-ish image for local / demo use.
 # Multi-stage: install deps in a venv, run as non-root.
+#
+# Base images use official names (python:3.12-slim) so THIS MACHINE's
+# Docker daemon registry-mirrors apply. Do not prefix a country-specific
+# registry — that changes when you change country.
+#
+# pip: optional PIP_INDEX_URL / PIP_EXTRA_INDEX_URL / PIP_TRUSTED_HOST
+# build-args (empty = official PyPI). scripts/compose.sh forwards this
+# machine's pip.conf into those args.
 
 FROM python:3.12-slim AS builder
 
@@ -11,8 +19,19 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+ARG PIP_INDEX_URL=""
+ARG PIP_EXTRA_INDEX_URL=""
+ARG PIP_TRUSTED_HOST=""
+RUN set -- \
+    && if [ -n "$PIP_INDEX_URL" ]; then set -- "$@" --index-url "$PIP_INDEX_URL"; fi \
+    && if [ -n "$PIP_EXTRA_INDEX_URL" ]; then set -- "$@" --extra-index-url "$PIP_EXTRA_INDEX_URL"; fi \
+    && if [ -n "$PIP_TRUSTED_HOST" ]; then \
+         for host in $PIP_TRUSTED_HOST; do \
+           set -- "$@" --trusted-host "$host"; \
+         done; \
+       fi \
+    && pip install --no-cache-dir --upgrade pip "$@" \
+    && pip install --no-cache-dir "$@" -r requirements.txt
 
 FROM python:3.12-slim AS runtime
 

@@ -2,16 +2,25 @@
 #
 # Default SQLite (data on named volume):
 #   docker compose up --build
+#   bash scripts/compose.sh up --build   # also forwards this machine's pip index
+#
+# Image names are official (python:3.12-slim, postgres:16-alpine) so this
+# machine's Docker registry-mirrors apply. Do not pin a country-specific
+# registry in this file.
 #
 # Optional Postgres:
 #   DATABASE_URL=postgresql+psycopg2://cino:cino@db:5432/cino_hr \
-#     docker compose --profile postgres up --build
+#     bash scripts/compose.sh --profile postgres up --build
 
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
     image: cino-hr-api:local
     ports:
       - "8000:8000"
@@ -34,7 +43,7 @@ services:
       retries: 5
       start_period: 25s
 
-  # Enable with: docker compose --profile postgres up --build
+  # Enable with: bash scripts/compose.sh --profile postgres up --build
   # Also set DATABASE_URL=postgresql+psycopg2://cino:cino@db:5432/cino_hr
   db:
     profiles: ["postgres"]

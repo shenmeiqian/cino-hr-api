@@ -19,9 +19,14 @@
 默认生产向配置：镜像内拷贝源码（**不** bind-mount），SQLite 写到 named volume `hr_data`。容器启动时 `docker/entrypoint.sh` 会执行 `python -m app.seed`（空库建表并写入演示数据；已有数据则跳过核心 seed），再启动 uvicorn。
 
 ```bash
-docker compose up --build
-# 后台: docker compose up --build -d
+# 推荐：基础镜像走本机 Docker 镜像加速；pip 走本机 pip.conf
+bash scripts/compose.sh up --build
+# 后台: bash scripts/compose.sh up --build -d
 ```
+
+也可以直接 `docker compose up --build`。基础镜像同样走本机 Docker `registry-mirrors`；pip 则用官方 PyPI，除非你导出了 `PIP_INDEX_URL`。
+
+仓库不写死任何国家的镜像站。换国家时只改本机 Docker / pip 配置即可。
 
 | 项 | 地址 / 值 |
 |---|---|
@@ -35,14 +40,14 @@ docker compose up --build
 本地热重载（bind-mount 源码，仅开发用）：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+bash scripts/compose.sh -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
 可选 Postgres（profile `postgres`）：
 
 ```bash
 DATABASE_URL=postgresql+psycopg2://cino:cino@db:5432/cino_hr \
-  docker compose --profile postgres up --build
+  bash scripts/compose.sh --profile postgres up --build
 ```
 
 ### 本机直接跑
@@ -241,6 +246,7 @@ cino-hr-api/
 ├── docker/
 │   └── entrypoint.sh   # seed then uvicorn
 ├── scripts/run.sh
+├── scripts/compose.sh   # docker compose + 本机 pip 源
 ├── scripts/demo_integration.sh
 ├── requirements.txt
 ├── Dockerfile

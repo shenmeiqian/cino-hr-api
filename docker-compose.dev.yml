@@ -1,6 +1,6 @@
 # Live-reload override (bind-mounts source). Do not use for the default demo stack.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#   bash scripts/compose.sh -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 services:
   api:
